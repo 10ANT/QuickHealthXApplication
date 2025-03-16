@@ -5,7 +5,7 @@ import { useQueue } from '../contexts/QueueContext';
 
 const DoctorPage = () => {
   const { currentUser } = useAuth();
-  const { refreshQueue } = useQueue();
+  const { refreshQueue, connected } = useQueue();
   const [isAvailable, setIsAvailable] = useState(currentUser?.available || false);
   const [currentSession, setCurrentSession] = useState(null);
   const [medicalNotes, setMedicalNotes] = useState('');
@@ -16,12 +16,11 @@ const DoctorPage = () => {
 
   const fetchCurrentSession = async () => {
     setLoading(true);
-    setError(null);
-    
     try {
       const response = await doctorService.getCurrentSession();
       setCurrentSession(response);
     } catch (error) {
+      // Don't show error for 404 (no current session)
       if (error.response?.status !== 404) {
         console.error('Error fetching current session:', error);
         setError('Failed to load current session data');
@@ -37,31 +36,27 @@ const DoctorPage = () => {
 
   const handleToggleAvailability = async () => {
     setActionLoading(true);
-    setError(null);
-    
     try {
       const response = await doctorService.toggleAvailability();
       setIsAvailable(response.available);
+      setSuccessMessage(response.available ? 
+        'You are now marked as available for patients' : 
+        'You are now marked as unavailable for patients');
       
-      if (response.available) {
-        setSuccessMessage('You are now marked as available for patients');
-      } else {
-        setSuccessMessage('You are now marked as unavailable for patients');
+      setTimeout(() => setSuccessMessage(''), 3000);
+      
+      // Try to refresh the queue
+      if (connected) {
+        refreshQueue();
       }
-      
-      setTimeout(() => {
-        setSuccessMessage('');
-      }, 3000);
-      
-      refreshQueue();
       
       // If doctor became available, try to get a patient
       if (response.available) {
-        handleGetNextPatient();
+        await handleGetNextPatient();
       }
     } catch (error) {
       console.error('Error toggling availability:', error);
-      setError(error.response?.data?.message || 'Failed to update availability');
+      setError('Failed to update availability');
     } finally {
       setActionLoading(false);
     }
@@ -74,22 +69,20 @@ const DoctorPage = () => {
     }
     
     setActionLoading(true);
-    setError(null);
-    
     try {
-      const response = await doctorService.assignPatient(currentUser.id);
+      const response = await doctorService.assignPatient();
       setCurrentSession(response);
       setIsAvailable(false);
       setSuccessMessage('New patient assigned to you');
+      setTimeout(() => setSuccessMessage(''), 3000);
       
-      setTimeout(() => {
-        setSuccessMessage('');
-      }, 3000);
-      
-      refreshQueue();
+      // Refresh queue after getting a patient
+      if (connected) {
+        refreshQueue();
+      }
     } catch (error) {
       console.error('Error getting next patient:', error);
-      setError(error.response?.data?.message || 'Failed to assign patient');
+      setError('Failed to assign patient');
     } finally {
       setActionLoading(false);
     }
@@ -107,38 +100,40 @@ const DoctorPage = () => {
     }
     
     setActionLoading(true);
-    setError(null);
-    
     try {
       await doctorService.completeSession(currentSession.id, medicalNotes);
       setCurrentSession(null);
       setMedicalNotes('');
       setSuccessMessage('Session completed successfully');
+      setTimeout(() => setSuccessMessage(''), 3000);
       
-      setTimeout(() => {
-        setSuccessMessage('');
-      }, 3000);
-      
-      refreshQueue();
+      // Refresh queue after completing a session
+      if (connected) {
+        refreshQueue();
+      }
     } catch (error) {
       console.error('Error completing session:', error);
-      setError(error.response?.data?.message || 'Failed to complete session');
+      setError('Failed to complete session');
     } finally {
       setActionLoading(false);
     }
   };
 
   if (loading) {
-    return (
-      <div className="flex justify-center items-center h-64">
-        <p className="text-gray-500">Loading doctor panel...</p>
-      </div>
-    );
+    return <div className="flex justify-center items-center h-64">
+      <p className="text-gray-500">Loading doctor panel...</p>
+    </div>;
   }
 
   return (
     <div className="max-w-4xl mx-auto">
       <h1 className="text-2xl font-bold mb-6">Doctor Panel</h1>
+      
+      {!connected && (
+        <div className="bg-yellow-100 border-l-4 border-yellow-500 text-yellow-700 p-4 mb-4" role="alert">
+          <p>WebSocket connection unavailable. Queue updates may be delayed.</p>
+        </div>
+      )}
       
       {successMessage && (
         <div className="bg-green-100 border-l-4 border-green-500 text-green-700 p-4 mb-4" role="alert">
@@ -204,7 +199,7 @@ const DoctorPage = () => {
               </div>
               <div>
                 <h3 className="text-gray-500 text-sm">Date of Birth</h3>
-                <p className="font-medium">{new Date(currentSession.patient.date_of_birth).toLocaleDateString()}</p>
+                <p className="font-medium">{currentSession.patient.date_of_birth && new Date(currentSession.patient.date_of_birth).toLocaleDateString()}</p>
               </div>
             </div>
           </div>
@@ -243,7 +238,7 @@ const DoctorPage = () => {
             </label>
             <textarea
               id="medical_notes"
-              className="form-input"
+              className="form-input w-full p-2 border rounded"
               rows="5"
               value={medicalNotes}
               onChange={(e) => setMedicalNotes(e.target.value)}

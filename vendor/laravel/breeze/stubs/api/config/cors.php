@@ -35,7 +35,7 @@ return [
  */
 
  return [
-    'paths' => ['api/*', 'sanctum/csrf-cookie', 'register', 'api'], // Add 'register' if needed
+    'paths' => ['api/*', 'sanctum/csrf-cookie', 'register', 'api','login','*','queue'], // Add 'register' if needed
     'allowed_methods' => ['*'],
     'allowedOrigins' => ['*'],
     'allowedOriginsPatterns' => [],

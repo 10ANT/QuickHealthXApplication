@@ -1,58 +1,60 @@
-import React, { createContext, useState, useEffect, useContext } from 'react';
-import Pusher from 'pusher-js';
-import { queueService } from '../api';
+// src/contexts/QueueContext.js
+import React, { createContext, useContext, useState, useEffect } from 'react';
 
-const QueueContext = createContext(null);
-
-export const useQueue = () => useContext(QueueContext);
+const QueueContext = createContext({
+  refreshQueue: () => console.log("Queue refresh requested")
+});
 
 export const QueueProvider = ({ children }) => {
-  const [queue, setQueue] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-  
-  const fetchQueue = async () => {
-    try {
-      setLoading(true);
-      const data = await queueService.getQueue();
-      setQueue(data);
-      setError(null);
-    } catch (err) {
-      console.error('Failed to fetch queue:', err);
-      setError('Failed to load queue data');
-    } finally {
-      setLoading(false);
-    }
-  };
-  
+  const [socket, setSocket] = useState(null);
+  const [connected, setConnected] = useState(false);
+
   useEffect(() => {
-    fetchQueue();
+    // Create WebSocket connection
+    const ws = new WebSocket('ws://localhost:8000/ws/queue');
     
-    // Set up Pusher
-    const pusher = new Pusher(import.meta.env.VITE_PUSHER_APP_KEY, {
-      cluster: import.meta.env.VITE_PUSHER_APP_CLUSTER,
-      encrypted: true,
-    });
+    ws.onopen = () => {
+      console.log('WebSocket connected');
+      setConnected(true);
+    };
     
-    const channel = pusher.subscribe('queue');
+    ws.onmessage = (event) => {
+      console.log('WebSocket message received:', event.data);
+      // Handle incoming queue updates here
+    };
     
-    channel.bind('queue.updated', () => {
-      fetchQueue();
-    });
+    ws.onerror = (error) => {
+      console.error('WebSocket error:', error);
+    };
     
+    ws.onclose = () => {
+      console.log('WebSocket disconnected');
+      setConnected(false);
+    };
+    
+    setSocket(ws);
+    
+    // Clean up on unmount
     return () => {
-      channel.unbind_all();
-      channel.unsubscribe();
-      pusher.disconnect();
+      if (ws) {
+        ws.close();
+      }
     };
   }, []);
-  
-  const value = {
-    queue,
-    loading,
-    error,
-    refreshQueue: fetchQueue,
+
+  const refreshQueue = () => {
+    if (socket && connected) {
+      socket.send(JSON.stringify({ action: 'refresh_queue' }));
+    } else {
+      console.log("WebSocket not connected, can't refresh queue");
+    }
   };
-  
-  return <QueueContext.Provider value={value}>{children}</QueueContext.Provider>;
+
+  return (
+    <QueueContext.Provider value={{ refreshQueue, connected }}>
+      {children}
+    </QueueContext.Provider>
+  );
 };
+
+export const useQueue = () => useContext(QueueContext);

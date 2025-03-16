@@ -1,7 +1,9 @@
 import axios from 'axios';
 
+const getCsrfCookie = () => api.get('/sanctum/csrf-cookie');
 
-const API_URL = '/api';
+const API_URL = 'http://localhost:8000';
+
 
 const api = axios.create({
   baseURL: API_URL,
@@ -56,11 +58,13 @@ api.interceptors.response.use(
 // Authentication Services to be passed to laravel breeze
 export const authService = {
   register: async (userData) => {
+    await getCsrfCookie(); // Get CSRF cookie first
     const response = await api.post('/register', userData);
     return response.data;
   },
   
   login: async (credentials) => {
+    await getCsrfCookie(); 
     const response = await api.post('/login', credentials);
     return response.data;
   },

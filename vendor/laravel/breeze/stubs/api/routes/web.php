@@ -1,9 +1,46 @@
 <?php
 
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
+use App\Http\Controllers\AuthController;
+use App\Http\Controllers\PatientController;
+use App\Http\Controllers\TriageController;
+use App\Http\Controllers\QueueController;
 
-Route::get('/', function () {
-    return ['Laravel' => app()->version()];
+// Public routes
+Route::prefix('auth')->group(function () {
+    Route::post('register', [AuthController::class, 'register']);
+    Route::post('login', [AuthController::class, 'login']);
 });
 
-require __DIR__.'/auth.php';
+// Protected routes
+Route::middleware('auth')->group(function () { // Use 'auth' middleware in web.php
+    Route::post('logout', [AuthController::class, 'logout']);
+
+    // User info
+    Route::get('user', function (Request $request) {
+        return $request->user();
+    });
+
+    // Patient routes
+    Route::apiResource('patients', PatientController::class);
+    Route::get('patients/search', [PatientController::class, 'search']);
+
+    // Triage routes
+    Route::post('triage', [TriageController::class, 'store']);
+
+    // Queue routes
+    Route::get('queue', [QueueController::class, 'index']);
+
+    // Doctor routes (Use 'can:doctor' middleware for permissions)
+    Route::middleware('can:doctor')->group(function () {
+        Route::post('doctor/toggle-availability', [QueueController::class, 'toggleAvailability']);
+        Route::post('doctor/assign-patient', [QueueController::class, 'assignPatient']);
+        Route::get('doctor/current-session', [QueueController::class, 'getCurrentSession']);
+        Route::post('doctor/complete-session', [QueueController::class, 'completeSession']);
+    });
+});
+
+Route::get('/', function () {
+    return view('welcome');
+});
