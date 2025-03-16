@@ -1,8 +1,8 @@
 <?php
-
+/*
 return [
 
-    /*
+
     |--------------------------------------------------------------------------
     | Cross-Origin Resource Sharing (CORS) Configuration
     |--------------------------------------------------------------------------
@@ -13,7 +13,7 @@ return [
     |
     | To learn more: https://developer.mozilla.org/en-US/docs/Web/HTTP/CORS
     |
-    */
+   
 
     'paths' => ['*'],
 
@@ -31,4 +31,17 @@ return [
 
     'supports_credentials' => true,
 
+];
+ */
+
+ return [
+    'paths' => ['api/*', 'sanctum/csrf-cookie', 'register', 'api'], // Add 'register' if needed
+    'allowed_methods' => ['*'],
+    'allowedOrigins' => ['*'],
+    'allowedOriginsPatterns' => [],
+    'allowedHeaders' => ['*'],
+    'allowedMethods' => ['*'],
+    'exposedHeaders' => [],
+    'max_age' => 0,
+    'supports_credentials' => true,
 ];

@@ -1,6 +1,7 @@
 import axios from 'axios';
 
-const API_URL = 'http://localhost:8000/api';
+
+const API_URL = '/api';
 
 const api = axios.create({
   baseURL: API_URL,
@@ -9,6 +10,12 @@ const api = axios.create({
     'Accept': 'application/json',
   },
 });
+
+
+
+
+
+
 
 // A Request interceptor for API calls
 api.interceptors.request.use(
@@ -23,6 +30,9 @@ api.interceptors.request.use(
     return Promise.reject(error);
   }
 );
+
+
+
 
 // So basically an implemenetation of Response interceptor for API calls
 api.interceptors.response.use(

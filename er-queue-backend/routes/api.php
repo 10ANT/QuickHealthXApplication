@@ -45,3 +45,8 @@ Route::middleware('auth:sanctum')->group(function () {
                     Route::post('/doctor/complete-session', [QueueController::class, 'completeSession']);
                 });
 });
+
+
+Route::get('/', function () {
+    return view('welcome');
+});
