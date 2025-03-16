@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { patientService, triageService } from '../api';
 import { useQueue } from '../contexts/QueueContext';
 
@@ -25,6 +25,109 @@ const TriagePage = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [successMessage, setSuccessMessage] = useState('');
   const { refreshQueue } = useQueue();
+  
+  // WebSocket reference
+  const socketRef = useRef(null);
+  
+  // Initialize WebSocket connection
+  useEffect(() => {
+    // Connection settings
+    const SOCKET_URL = process.env.REACT_APP_WEBSOCKET_URL || 'ws://localhost:3001/queue';
+    let reconnectTimeout = null;
+    let isConnecting = false;
+    
+    // Function to create and set up the WebSocket
+    const connectWebSocket = () => {
+      if (isConnecting) return;
+      isConnecting = true;
+      
+      // Close existing connection if any
+      if (socketRef.current && socketRef.current.readyState === WebSocket.OPEN) {
+        socketRef.current.close();
+      }
+      
+      // Create new WebSocket connection
+      const socket = new WebSocket(SOCKET_URL);
+      
+      // Connection opened
+      socket.addEventListener('open', () => {
+        console.log('Connected to WebSocket server');
+        isConnecting = false;
+        
+        // Clear any reconnection timeout
+        if (reconnectTimeout) {
+          clearTimeout(reconnectTimeout);
+          reconnectTimeout = null;
+        }
+      });
+      
+      // Listen for messages
+      socket.addEventListener('message', (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          
+          // Handle different message types
+          if (data.type === 'QUEUE_UPDATED') {
+            refreshQueue();
+          } else if (data.type === 'PATIENT_UPDATED' && data.patientId === selectedPatient?.id) {
+            // Refresh patient data if the updated patient is the selected one
+            const fetchPatientData = async () => {
+              try {
+                const updatedPatient = await patientService.getById(data.patientId);
+                setSelectedPatient(updatedPatient);
+              } catch (error) {
+                console.error('Error refreshing patient data:', error);
+              }
+            };
+            
+            fetchPatientData();
+          }
+        } catch (error) {
+          console.error('Error parsing WebSocket message:', error);
+        }
+      });
+      
+      // Handle errors
+      socket.addEventListener('error', (event) => {
+        console.error('WebSocket error:', event);
+      });
+      
+      // Handle disconnections
+      socket.addEventListener('close', (event) => {
+        console.log('Disconnected from WebSocket server. Code:', event.code, 'Reason:', event.reason);
+        isConnecting = false;
+        
+        // Attempt to reconnect after a delay
+        reconnectTimeout = setTimeout(connectWebSocket, 5000);
+      });
+      
+      // Store socket reference
+      socketRef.current = socket;
+    };
+    
+    // Initial connection
+    connectWebSocket();
+    
+    // Clean up on unmount
+    return () => {
+      if (socketRef.current) {
+        socketRef.current.close();
+      }
+      if (reconnectTimeout) {
+        clearTimeout(reconnectTimeout);
+      }
+    };
+  }, [refreshQueue, selectedPatient]);
+  
+  // Send message to WebSocket
+  const sendSocketMessage = (messageType, data) => {
+    if (socketRef.current && socketRef.current.readyState === WebSocket.OPEN) {
+      socketRef.current.send(JSON.stringify({
+        type: messageType,
+        ...data
+      }));
+    }
+  };
 
   const searchPatients = async () => {
     if (searchQuery.length < 2) {
@@ -84,11 +187,14 @@ const TriagePage = () => {
         date_of_birth: '',
         medical_record_number: '',
       });
+      
+      // Send WebSocket notification about the new patient
+      sendSocketMessage('PATIENT_CREATED', { patientId: createdPatient.id });
     } catch (error) {
       console.error('Error creating patient:', error);
       if (error.response?.data?.errors) {
         setErrors(error.response.data.errors);
-    } else {
+      } else {
         setErrors({ general: 'Error creating patient' });
       }
     } finally {
@@ -134,7 +240,14 @@ const TriagePage = () => {
       });
       setSelectedPatient(null);
       setSearchQuery('');
-      refreshQueue();
+      
+      // Send WebSocket notification about the triage submission
+      sendSocketMessage('TRIAGE_SUBMITTED', { 
+        patientId: selectedPatient.id,
+        triageId: data.id 
+      });
+      
+      // Local queue will be updated when server sends a QUEUE_UPDATED message
       
       setTimeout(() => {
         setSuccessMessage('');
@@ -308,7 +421,7 @@ const TriagePage = () => {
               </div>
               
               <div>
-                <label className="block text-gray-700 text-sm font-bold mb-2" htmlFor="medical_record_number">
+              <label className="block text-gray-700 text-sm font-bold mb-2" htmlFor="medical_record_number">
                   Medical Record Number
                 </label>
                 <input
@@ -435,6 +548,6 @@ const TriagePage = () => {
       )}
     </div>
   );
- };
- 
- export default TriagePage;
+};
+
+export default TriagePage;
